@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, HTTPException, Path
+from fastapi import Depends, FastAPI, HTTPException, Path, Query
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
@@ -65,6 +65,8 @@ async def get_price(
 @app.get("/history/{coin_id}")
 async def get_price_history(
     coin_id: str = Path(..., description="The name of the coin for which to get the price history (e.g., bitcoin)", max_length=50, pattern=r"^[a-z0-9-]+$"),
+    limit: int = Query(100, description="Maximum number of price records to return", ge=1, le=1000),
+    offset: int = Query(0, description="Number of records to skip for pagination", ge=0),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -82,7 +84,7 @@ async def get_price_history(
     """
 
     result = await db.execute(
-        select(Coin.price_usd, Coin.timestamp).where(Coin.coin_id == coin_id).order_by(Coin.timestamp.desc())
+        select(Coin.price_usd, Coin.timestamp).where(Coin.coin_id == coin_id).order_by(Coin.timestamp.desc()).limit(limit).offset(offset)
     )
     rows = result.fetchall()
     if not rows:
