@@ -18,9 +18,9 @@ starlette==1.1.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.48.0
-iniconfig-2.3.0
-packaging-26.2
-pluggy-1.6.0
-pygments-2.20.0
-pytest-9.0.3
-pytest-asyncio-1.4.0
+iniconfig==2.3.0
+packaging==26.2
+pluggy==1.6.0
+pygments==2.20.0
+pytest==9.0.3
+pytest-asyncio==1.4.0
