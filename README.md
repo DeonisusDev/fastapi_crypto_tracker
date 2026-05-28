@@ -2,6 +2,9 @@
 
 FastAPI service for getting current cryptocurrency prices via CoinGecko API.
 
+## Live Demo
+https://fastapicryptotracker-production.up.railway.app
+
 ## Stack
 - FastAPI
 - PostgreSQL (price history)
