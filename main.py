@@ -38,6 +38,16 @@ cache = {}
 CACHE_EXPIRATION = 60  # Cache expiration time in seconds
 
 def get_cached_price(coin_id: str):
+    """
+    Returns cached price for a coin if it exists and hasn't expired.
+    
+    Args:
+        coin_id: The coin identifier (e.g., 'bitcoin')
+    
+    Returns:
+        Cached price as float, or None if not found or expired.
+    """
+    
     if coin_id in cache:
         price, cached_at = cache[coin_id]
         if time.time() - cached_at < CACHE_EXPIRATION:
@@ -49,6 +59,14 @@ def get_cached_price(coin_id: str):
 
 
 def set_cache(coin_id: str, price: float):
+    """
+    Sets the cache for a coin with the current price and timestamp.
+    
+    Args:
+        coin_id: The coin identifier (e.g., 'bitcoin')
+        price: The price to cache
+    """
+
     cache[coin_id] = (price, time.time())
 
 
@@ -62,6 +80,19 @@ async def get_price(
     coin_id: str = Path(..., description="The name of the coin for which to get the price (e.g., bitcoin)", max_length=50, pattern=r"^[a-z0-9-]+$"),
     db: AsyncSession = Depends(get_db)
 ):
+    """
+    Fetches the current price of a cryptocurrency from CoinGecko API, with caching and error handling.
+    
+    Args:
+        coin_id: The name of the coin (e.g., 'bitcoin')
+        db: Database session for storing price history
+    
+    Returns:
+        PriceResponse: The current price of the coin in USD
+    
+    Raises:
+        HTTPException: If the coin is not found, external API is unavailable, or other errors occur
+    """
 
     cached_price = get_cached_price(coin_id)
     if cached_price is not None:
@@ -96,6 +127,20 @@ async def get_price_history(
     coin_id: str = Path(..., description="The name of the coin for which to get the price history (e.g., bitcoin)", max_length=50, pattern=r"^[a-z0-9-]+$"),
     db: AsyncSession = Depends(get_db)
 ):
+    """
+    Fetches the price history of a cryptocurrency from the database.
+    
+    Args:
+        coin_id: The name of the coin for which to get the price history (e.g., 'bitcoin')
+        db: Database session for querying price history
+    
+    Returns:
+        PricesHistory: The price history of the coin
+    
+    Raises:
+        HTTPException: If no price history is found for the specified coin
+    """
+
     result = await db.execute(
         select(Coin.price_usd, Coin.timestamp).where(Coin.coin_id == coin_id).order_by(Coin.timestamp.desc())
     )
