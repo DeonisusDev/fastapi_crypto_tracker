@@ -1,11 +1,11 @@
 from fastapi import Depends, FastAPI, HTTPException, Path, Query
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
-from database import get_db
-from models import Coin
+from app.db.database import get_db
+from app.models.coin import Coin
 from sqlalchemy import select
-from schemas import PriceResponse, PricesHistory, PriceRecord
-from services.cache import get_cached_price, set_cache
+from app.schemas.price import PriceResponse, PricesHistory, PriceRecord
+from app.services.cache import get_cached_price, set_cache
 
 app = FastAPI()
 

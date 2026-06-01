@@ -1,4 +1,4 @@
-from services.cache import get_cached_price, set_cache
+from app.services.cache import get_cached_price, set_cache
 import time
 from unittest.mock import patch
 
@@ -17,7 +17,7 @@ def test_cache_expiration():
     set_cache("bitcoin", 75000.0)
     
     # Simulate time passing to expire the cache (assuming cache expiration is set to 60 seconds)
-    with patch("services.cache.time.time", return_value=time.time() + 61):
+    with patch("app.services.cache.time.time", return_value=time.time() + 61):
         result = get_cached_price("bitcoin")
     
     assert result is None

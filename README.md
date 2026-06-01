@@ -27,6 +27,6 @@ docker compose up -d
 4. Install dependencies and run:
 ```bash
 pip install -r requirements.txt
-uvicorn main:app --reload
+uvicorn app.main:app --reload
 ```
 
