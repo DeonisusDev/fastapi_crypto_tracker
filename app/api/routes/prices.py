@@ -79,11 +79,11 @@ async def get_price_history(
     """
 
     result = await db.execute(
-        select(Coin.price_usd, Coin.timestamp).where(Coin.coin_id == coin_id).order_by(Coin.timestamp.desc()).limit(limit).offset(offset)
+        select(Coin.current_price_usd, Coin.timestamp).where(Coin.coin_id == coin_id).order_by(Coin.timestamp.desc()).limit(limit).offset(offset)
     )
     rows = result.fetchall()
     if not rows:
         raise HTTPException(status_code=404, detail=f"No price history found for '{coin_id}'")
     
-    prices = [PriceRecord(price_usd=row.price_usd, timestamp=row.timestamp) for row in rows]
+    prices = [PriceRecord(price_usd=row.current_price_usd, timestamp=row.timestamp) for row in rows]
     return PricesHistory(coin_id=coin_id, prices=prices)
