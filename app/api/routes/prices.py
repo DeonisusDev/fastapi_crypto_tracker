@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 import httpx
 import logging
-from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
+from app.etl.load import load_coins_to_db
+from app.etl.transform import transform_coins
 from app.models.coin import Coin
 from sqlalchemy import select
 from app.schemas.price import PriceResponse, PricesHistory, PriceRecord
@@ -21,17 +22,16 @@ async def get_price(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Fetches the current price of a cryptocurrency from CoinGecko API, with caching and error handling.
+    Fetches the current price of a cryptocurrency. First checks the cache, then fetches from external API if not cached.
     
     Args:
-        coin_id: The name of the coin (e.g., 'bitcoin')
-        db: Database session for storing price history
-    
+        coin_id: The name of the coin for which to get the price (e.g., 'bitcoin')
+        db: Database session for storing fetched price data
+
     Returns:
         PriceResponse: The current price of the coin in USD
-    
     Raises:
-        HTTPException: If the coin is not found, external API is unavailable, or other errors occur
+        HTTPException: If the coin is not found or if there are issues with the external API
     """
 
     cached_price = get_cached_price(coin_id)
@@ -40,40 +40,20 @@ async def get_price(
     try:
         fetch_result = await fetch_coin(coin_id)
         logger.info(f"Fetched data for {coin_id}: {fetch_result}")
-        if fetch_result and len(fetch_result) > 0:
-            coin_data = fetch_result[0]
-            price = coin_data.get("current_price")
-            if price is not None:
-                set_cache(coin_id, price)
-                last_updated = coin_data.get("last_updated")
-                if last_updated is None:
-                    last_updated = datetime.now(timezone.utc)
-                elif isinstance(last_updated, str):
-                    try:
-                        # Parse ISO format datetime string
-                        last_updated = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
-                    except (ValueError, AttributeError):
-                        last_updated = datetime.now(timezone.utc)
-                logger.info(f"Adding coin to DB: {coin_id}")
-                db.add(Coin(
-                    coin_id=coin_id,
-                    coin_symbol=coin_data.get("symbol", ""),
-                    coin_name=coin_data.get("name", ""),
-                    current_price_usd=price,
-                    market_cap=coin_data.get("market_cap", 0),
-                    market_cap_rank=coin_data.get("market_cap_rank", 0),
-                    total_volume=coin_data.get("total_volume", 0),
-                    price_change_percentage_24h=coin_data.get("price_change_percentage_24h", 0),
-                    last_updated=last_updated
-                ))
-                logger.info(f"Committing transaction for {coin_id}")
-                await db.commit()
-                logger.info(f"Successfully saved {coin_id} to DB")
-                return PriceResponse(
-                    coin_id=coin_id,
-                    price_usd=price
-                )
-       
+        if not fetch_result:
+            raise HTTPException(status_code=404, detail=f"Coin '{coin_id}' not found")
+        coins = transform_coins(fetch_result)
+        if coins:
+            coin = coins[0]
+            set_cache(coin_id, coin.current_price_usd)
+            await load_coins_to_db([coin], db)
+            logger.info(f"Loaded coin data into DB: {coin.coin_id}")
+            return PriceResponse(
+                coin_id=coin.coin_id,
+                price_usd=coin.current_price_usd
+            )
+        else:
+            logger.warning(f"No valid coin data found for {coin_id}")
             raise HTTPException(status_code=404, detail=f"Coin '{coin_id}' not found")
     except httpx.ConnectTimeout:
         raise HTTPException(status_code=503, detail="External API is unavailable")
@@ -115,3 +95,4 @@ async def get_price_history(
     
     prices = [PriceRecord(price_usd=row.current_price_usd, timestamp=row.timestamp) for row in rows]
     return PricesHistory(coin_id=coin_id, prices=prices)
+
