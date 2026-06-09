@@ -1,5 +1,5 @@
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Integer, String, Numeric, DateTime
+from sqlalchemy import Integer, String, Numeric, DateTime, UniqueConstraint
 from datetime import datetime, timezone
 
 class Base(DeclarativeBase):
@@ -24,6 +24,9 @@ class Coin(Base):
         last_updated: The timestamp of the last update for the coin data
     """
     __tablename__ = "coins"
+    __table_args__ = (
+        UniqueConstraint("coin_id", "last_updated", name="uq_coin_last_updated"),
+    )
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     coin_id: Mapped[str] = mapped_column(String(50))
