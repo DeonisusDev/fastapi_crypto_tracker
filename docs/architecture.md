@@ -3,424 +3,412 @@
 ## Project Goal
 
 This project is a backend service for collecting, storing, and exposing
-cryptocurrency market data.
+cryptocurrency market data from CoinGecko.
 
-The current version can fetch the latest price for a coin from CoinGecko and
-store the result in PostgreSQL. The target version should evolve into a small
-data platform: it should ingest market data on a schedule, keep historical
-records, expose clean API endpoints, and provide simple analytics.
+The current implementation provides:
 
-The project is intended to demonstrate practical backend and data-engineering
-skills:
-
-- async Python and FastAPI
-- PostgreSQL data modeling
-- SQLAlchemy usage
-- database migrations
-- external API integration
-- scheduled data ingestion
-- error handling and observability
-- testing
+- async Python with FastAPI
+- PostgreSQL database with SQLAlchemy async ORM
+- ETL pipeline for data ingestion
+- scheduled data collection every minute
+- RESTful API endpoints for price data
+- in-memory caching for performance
 - Docker-based local development
+
+The project demonstrates practical backend engineering skills:
+
+- async/await patterns in Python
+- FastAPI framework and routing
+- SQLAlchemy ORM with async support
+- PostgreSQL data modeling
+- External API integration (CoinGecko)
+- APScheduler for scheduled tasks
+- error handling and logging
+- Docker Compose setup
 
 ## Target Users
 
 The primary users are:
 
-- developers who need an API for cryptocurrency price history
-- analysts who want historical market data for selected coins
-- hiring managers or interviewers evaluating backend/data-engineering skills
+- developers who need an API for cryptocurrency price data
+- analysts who want historical market data
+- evaluators assessing backend engineering capabilities
 
-This is not meant to be a trading system. It does not place orders, manage
-wallets, or provide financial advice.
+## Current Architecture
 
-## Data Sources
+### Technology Stack
 
-The initial external data source is CoinGecko.
+- **Framework**: FastAPI
+- **Database**: PostgreSQL
+- **ORM**: SQLAlchemy with async support
+- **Async Client**: httpx
+- **Scheduling**: APScheduler (AsyncIOScheduler)
+- **Caching**: In-memory (dict-based)
+- **External API**: CoinGecko
 
-The system should collect data such as:
+### Database Model
 
-- coin identifier, for example `bitcoin`
-- symbol, for example `btc`
-- display name, for example `Bitcoin`
-- current price in USD
-- market capitalization in USD
-- 24-hour trading volume in USD
-- 24-hour price change percentage
-- timestamp when the data was observed
-- source name, for example `coingecko`
+The current implementation uses a simplified single-table schema:
 
-In the future, the system may support additional sources. The database and
-application structure should not assume that CoinGecko is the only possible
-provider forever.
+#### coins
 
-## Core Concepts
+Stores cryptocurrency data and prices.
 
-### Asset
+Columns:
 
-An asset represents a cryptocurrency tracked by the system.
-
-Example assets:
-
-- Bitcoin
-- Ethereum
-- Solana
-
-The asset table should store relatively stable metadata, such as CoinGecko ID,
-symbol, name, and whether the asset is active.
-
-### Price Tick
-
-A price tick is a market data observation for one asset at one point in time.
-
-For example:
-
-```text
-bitcoin cost 68000.50 USD at 2026-06-01 10:00:00 UTC
-```
-
-Price ticks are append-only historical records. The system should not overwrite
-old prices when a new price arrives.
-
-### Ingestion Run
-
-An ingestion run represents one attempt to collect data from an external source.
-
-It should record:
-
-- when the run started
-- when the run finished
-- whether it succeeded or failed
-- how many records were fetched
-- how many records were inserted
-- an error message if something failed
-
-This is important for data-engineering work because it makes the pipeline
-observable and debuggable.
-
-## Database Model
-
-The target database should start with three main tables.
-
-### assets
-
-Stores tracked cryptocurrency metadata.
-
-Suggested columns:
-
-- `id`
-- `coin_id`
-- `symbol`
-- `name`
-- `is_active`
-- `created_at`
-- `updated_at`
-
-Important constraints:
-
-- `coin_id` should be unique
-- `symbol` should be indexed if it is used for lookups
-
-### price_ticks
-
-Stores historical market observations.
-
-Suggested columns:
-
-- `id`
-- `asset_id`
-- `price_usd`
-- `market_cap_usd`
-- `volume_24h_usd`
-- `price_change_24h_percent`
-- `observed_at`
-- `source`
-- `created_at`
-
-Important constraints:
-
-- `asset_id` should reference `assets.id`
-- `(asset_id, observed_at, source)` should be unique to avoid duplicate records
-- queries by `asset_id` and `observed_at` should be efficient
-
-### ingestion_runs
-
-Stores metadata about data collection jobs.
-
-Suggested columns:
-
-- `id`
-- `source`
-- `status`
-- `started_at`
-- `finished_at`
-- `records_fetched`
-- `records_inserted`
-- `error_message`
-
-Possible statuses:
-
-- `running`
-- `success`
-- `failed`
+- `id` (Primary Key): Unique identifier
+- `coin_id` (String): Unique coin identifier from CoinGecko (e.g., 'bitcoin')
+- `coin_symbol` (String): Coin symbol (e.g., 'btc')
+- `coin_name` (String): Full name (e.g., 'Bitcoin')
+- `current_price_usd` (Numeric): Current price in USD
+- `market_cap` (Numeric): Market capitalization in USD
+- `market_cap_rank` (Integer): Ranking by market cap
+- `total_volume` (Numeric): 24-hour trading volume in USD
+- `price_change_percentage_24h` (Numeric): 24-hour price change percentage
+- `timestamp` (DateTime): When the record was created
+- `last_updated` (DateTime): When the coin data was last updated
 
 ## Application Layers
 
-The target application should be split into clear layers.
+The application is organized into clear, separated layers:
 
-### API Layer
+### API Layer (`app/api/routes/`)
 
-Responsible for HTTP requests and responses.
+Handles HTTP requests and responses.
 
-It should:
+Current endpoints:
 
-- validate path and query parameters
-- call services
-- return Pydantic response models
-- translate known errors into HTTP responses
+- `health.py`: Health check endpoint at `/`
+- `prices.py`: Price endpoints
+  - `GET /price/{coin_id}`: Get current price for a coin
 
-It should not contain database queries or external API request details.
+Responsibilities:
 
-### Service Layer
+- validates path and query parameters
+- caches results when available
+- calls ETL functions to fetch and update data
+- returns Pydantic response models
+- handles HTTP errors and exceptions
 
-Responsible for business logic.
+### Database Layer (`app/db/`)
 
-Examples:
+Manages database connectivity and session management.
 
-- get the latest price for an asset
-- collect prices for all active assets
-- calculate moving averages
-- create an ingestion run and update its final status
+- `database.py`: 
+  - Creates async engine with PostgreSQL
+  - Provides async session factory
+  - Implements `get_db()` dependency for FastAPI
+  - Creates tables on startup
 
-### Repository Layer
+### Models Layer (`app/models/`)
 
-Responsible for database access.
+Defines SQLAlchemy ORM models.
 
-Examples:
+- `coin.py`: `Coin` model representing the `coins` table
+  - Uses SQLAlchemy async ORM with mapped columns
+  - Includes all cryptocurrency data fields
 
-- insert price ticks
-- fetch latest price for an asset
-- fetch historical prices for a time range
-- create or update ingestion run records
+### ETL Layer (`app/etl/`)
 
-The rest of the application should not need to know raw SQLAlchemy query
-details.
+Handles data extraction, transformation, and loading.
 
-### Client Layer
+- `extract.py`:
+  - `fetch_coin()`: Fetches data for a single coin via CoinGecko API
+  - `fetch_top_coins()`: Fetches top 10 coins by market cap
+  - Uses httpx for async HTTP requests
+  - Includes search functionality with best-match logic
 
-Responsible for external API communication.
+- `transform.py`:
+  - `transform_coins()`: Converts CoinGecko API responses into `Coin` ORM objects
+  - Normalizes data structures
 
-For CoinGecko, this layer should:
+- `load.py`:
+  - `load_coins_to_db()`: Inserts or updates coins in the database
+  - Handles database operations
 
-- build request URLs and parameters
-- set timeouts
-- handle HTTP errors
-- parse provider responses into internal data structures
+### Scheduler Layer (`app/scheduler/`)
 
-This keeps external API-specific logic out of the rest of the application.
+Manages scheduled tasks using APScheduler.
 
-## Target API Endpoints
+- `jobs.py`:
+  - `update_top_coins()`: Scheduled job that runs every 1 minute
+  - Fetches top coins, transforms data, and loads into database
+  - Includes error logging and handling
+
+### Services Layer (`app/services/`)
+
+Provides application services.
+
+- `cache.py`:
+  - In-memory cache for price data
+  - `get_cached_price()`: Retrieves cached price
+  - `set_cache()`: Stores price in cache
+  - Reduces API calls to external services
+
+### Schemas Layer (`app/schemas/`)
+
+Defines Pydantic models for API responses.
+
+- `price.py`: Response schemas
+  - `PriceResponse`: Single price response
+  - `PricesHistory`: Historical price data
+  - `PriceRecord`: Individual price record
+
+## Current API Endpoints
 
 ### Health
 
-```text
-GET /health
+```
+GET /
 ```
 
-Returns whether the application is running.
+Returns a status indicator that the application is running.
 
-```text
-GET /ready
+Response:
+```json
+{
+  "status": "ok"
+}
 ```
-
-Returns whether the application can connect to required dependencies such as
-PostgreSQL.
-
-### Assets
-
-```text
-GET /assets
-```
-
-Returns the list of tracked assets.
-
-```text
-POST /assets
-```
-
-Adds a new asset to track.
-
-```text
-PATCH /assets/{coin_id}
-```
-
-Updates asset metadata or active status.
 
 ### Prices
 
-```text
-GET /prices/{coin_id}/latest
+```
+GET /price/{coin_id}
 ```
 
-Returns the latest known price for one asset.
+Returns the current price for a cryptocurrency.
 
-```text
-GET /prices/{coin_id}/history
+Parameters:
+- `coin_id` (path): The coin identifier (e.g., 'bitcoin')
+
+Response:
+```json
+{
+  "coin_id": "bitcoin",
+  "price_usd": 68000.50
+}
 ```
 
-Returns historical prices for one asset.
+Behavior:
+- First checks in-memory cache
+- If cached, returns immediately
+- If not cached, fetches from CoinGecko API
+- Stores result in database and cache
+- Returns cached value on subsequent requests
 
-Useful query parameters:
+## Data Flow
 
-- `from`
-- `to`
-- `limit`
-- `offset`
+### Scheduled Ingestion (`update_top_coins`)
 
-### Ingestion
+Runs every 1 minute via APScheduler:
 
-```text
-POST /ingestion/run
-```
+1. Fetch top 10 coins from CoinGecko API using `fetch_top_coins()`
+2. Transform API response into `Coin` ORM objects using `transform_coins()`
+3. Load coins into PostgreSQL database using `load_coins_to_db()`
+4. Log success or error
 
-Manually starts one ingestion run.
+### On-Demand Price Request
 
-This is useful during development and debugging. In production-like mode,
-ingestion should also be scheduled automatically.
+When a client requests `/price/{coin_id}`:
 
-```text
-GET /ingestion/runs
-```
+1. Check in-memory cache for the price
+2. If found in cache, return immediately
+3. If not cached:
+   - Fetch data from CoinGecko API using `fetch_coin()`
+   - Transform into `Coin` object using `transform_coins()`
+   - Load into database using `load_coins_to_db()`
+   - Store price in cache
+4. Return `PriceResponse` with the price
 
-Returns recent ingestion run history.
+### Startup
 
-### Analytics
+When the application starts (lifespan startup):
 
-```text
-GET /analytics/{coin_id}/moving-average
-```
+1. Create all database tables based on SQLAlchemy models
+2. Initialize APScheduler
+3. Schedule `update_top_coins()` job
+4. Start the scheduler
+5. FastAPI app is ready to accept requests
 
-Returns a simple moving average for an asset.
+### Shutdown
 
-Useful query parameters:
+When the application stops (lifespan shutdown):
 
-- `window`
-- `from`
-- `to`
-
-```text
-GET /analytics/top-movers
-```
-
-Returns assets with the largest price changes over a selected period.
-
-## Ingestion Flow
-
-A typical ingestion run should work like this:
-
-1. Create an `ingestion_runs` record with status `running`.
-2. Load all active assets from the database.
-3. Request market data from CoinGecko for those assets.
-4. Normalize the external response into internal price tick records.
-5. Insert new price ticks into PostgreSQL.
-6. Mark the ingestion run as `success`.
-7. If an error happens, mark the ingestion run as `failed` and store the error.
-
-The ingestion process should be idempotent where possible. Running the same
-ingestion twice should not create duplicate price ticks for the same asset,
-timestamp, and source.
+1. Shutdown the scheduler
+2. Close database connections
 
 ## Error Handling
 
-The application should handle expected failures explicitly.
+The application handles errors at multiple levels:
 
-Examples:
+### API Layer
 
-- external API timeout
-- external API rate limit
-- invalid coin ID
-- database connection failure
-- duplicate asset creation
-- no historical data found
+- Parameter validation using Pydantic
+- HTTPException for API errors (e.g., 404 for unknown coins)
+- Returns appropriate HTTP status codes
 
-API responses should be clear, but internal exception details should not be
-leaked to users.
+### ETL Layer
+
+- Logs errors during fetch, transform, and load operations
+- Gracefully handles API timeouts and failures
+- Continues execution when errors occur in scheduled jobs
+
+### Scheduler
+
+- Catches exceptions in scheduled tasks
+- Logs errors for debugging
+- Continues running even if individual tasks fail
 
 ## Observability
 
-The project should include basic observability features:
+The project includes basic observability:
 
-- structured logs for API requests and ingestion runs
-- ingestion run records in the database
-- health and readiness endpoints
-- clear error messages for failed external API calls
+- **Logging**: Structured logging at key points
+  - Database creation on startup
+  - Scheduled job execution
+  - API requests and responses
+  - Errors during ETL operations
+  - Coin data loading status
 
-This is important because data pipelines need to be monitored and debugged.
+- **Health Check**: `/` endpoint for basic liveness check
 
-## Testing Strategy
+- **Database Records**: Coins table provides audit trail of what data was fetched
 
-The project should include several levels of tests.
+## Testing
 
-### Unit Tests
+Current test coverage:
 
-Examples:
+- `test_cache.py`: Tests in-memory cache functionality
+  - Cache storage and retrieval
+  - Cache behavior
 
-- cache expiration behavior
-- CoinGecko response parsing
-- analytics calculations
-- service-level error handling
+Tests can be run with pytest:
 
-### API Tests
-
-Examples:
-
-- latest price endpoint returns expected shape
-- history endpoint supports pagination
-- unknown asset returns 404
-- invalid query parameters return 422
-
-### Database Tests
-
-Examples:
-
-- price ticks are inserted correctly
-- duplicate ticks are rejected or ignored safely
-- ingestion runs are updated from `running` to `success` or `failed`
+```bash
+pytest tests/
+```
 
 ## Local Development
 
-The target local development setup should support:
+### Setup with Docker Compose
 
-```text
+The project includes Docker Compose configuration for PostgreSQL:
+
+```bash
 docker compose up
 ```
 
-This should start:
+This starts:
+- PostgreSQL database on port 5432
 
-- the FastAPI application
-- PostgreSQL
+### Running the Application
 
-Useful developer commands should eventually be added through a Makefile:
+```bash
+# Activate virtual environment
+source .venv/bin/activate
 
-```text
-make run
-make test
-make lint
-make migrate
-make revision
+# Install dependencies
+pip install -r requirements.txt
+
+# Set environment variables (.env file)
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/crypto_tracker
+
+# Run with uvicorn
+uvicorn app.main:app --reload
 ```
 
-## Future Improvements
+The application will be available at `http://localhost:8000`
 
-Possible future additions:
+### Environment Variables
 
-- Redis cache instead of in-memory cache
-- Celery, Arq, or APScheduler for background ingestion
-- Prometheus metrics
-- CSV export
-- Parquet export
-- partitioned price history tables
-- dashboard UI
-- support for multiple data providers
+Create a `.env` file with:
 
-These should be added only after the core backend and ingestion flow are solid.
+```
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/crypto_tracker
+POSTGRES_USER=user
+POSTGRES_PASSWORD=password
+POSTGRES_DB=crypto_tracker
+```
+
+## Project Structure
+
+```
+app/
+├── __init__.py
+├── main.py                    # FastAPI app setup, lifespan, routes
+├── api/
+│   ├── __init__.py
+│   └── routes/
+│       ├── __init__.py
+│       ├── health.py         # Health check endpoint
+│       └── prices.py         # Price endpoints
+├── core/
+│   ├── __init__.py
+│   └── config.py             # Configuration management
+├── db/
+│   ├── __init__.py
+│   └── database.py           # Database setup, session management
+├── models/
+│   ├── __init__.py
+│   └── coin.py               # SQLAlchemy Coin model
+├── etl/
+│   ├── __init__.py
+│   ├── extract.py            # CoinGecko API client
+│   ├── transform.py          # Data transformation
+│   └── load.py               # Database loading
+├── scheduler/
+│   ├── __init__.py
+│   └── jobs.py               # Scheduled tasks
+├── services/
+│   ├── __init__.py
+│   └── cache.py              # In-memory caching
+└── schemas/
+    ├── __init__.py
+    └── price.py              # Pydantic response models
+
+tests/
+├── __init__.py
+└── test_cache.py             # Cache tests
+
+docker-compose.yml            # PostgreSQL setup
+Dockerfile                     # Application container
+requirements.txt              # Python dependencies
+README.md                      # Project documentation
+```
+
+## Future Enhancements
+
+Possible improvements for future versions:
+
+### Data Model
+- Separate `assets` and `price_ticks` tables for historical data
+- `ingestion_runs` table to track data collection jobs
+- Indexes on frequently queried columns
+
+### API Endpoints
+- `/assets`: List all tracked assets
+- `/prices/{coin_id}/latest`: Get latest price
+- `/prices/{coin_id}/history`: Get historical prices with pagination
+- `/analytics/top-movers`: Find coins with largest price changes
+- `/ingestion/runs`: View ingestion run history
+
+### Infrastructure
+- Redis cache instead of in-memory
+- Celery or Arq for background job processing
+- Prometheus metrics and monitoring
+- Database migrations with Alembic
+
+### Features
+- Support for additional data providers
+- Analytics and calculations (moving averages)
+- CSV/Parquet export functionality
+- Web dashboard UI
+- Rate limiting and authentication
+
+### Quality
+- Comprehensive test suite
+- Database migration strategy
+- Linting and formatting (Black, Ruff)
+- Integration tests
+- Load testing

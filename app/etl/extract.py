@@ -4,7 +4,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 async def search_coin(query: str) -> list[dict]:
-    """Search for a coin by name or symbol and return its markets data"""
+    """
+    Search for a coin by name or symbol using CoinGecko API.
+    Tries to find the best match based on symbol, name, or id.
+
+    Args:
+        query: The search query (coin name or symbol)
+
+    Returns:
+        A list of coin data dictionaries matching the search query, or an empty list if no matches
+    
+    Raises:
+        Exception: If any error occurs during the API request or processing
+    """
     try:
         # First, search for the coin
         search_url = "https://api.coingecko.com/api/v3/search?query=" + query
@@ -64,6 +76,15 @@ async def search_coin(query: str) -> list[dict]:
         return []
 
 async def fetch_top_coins() -> list[dict]:
+    """
+    Fetches the top 10 coins by market cap from CoinGecko API.
+    
+    Returns:
+        A list of dictionaries containing data for the top 10 coins, or an empty list if an error occurs
+    
+    Raises:
+        Exception: If any error occurs during the API request or processing
+    """
     try:
         url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10"
         async with httpx.AsyncClient() as client:
@@ -83,6 +104,19 @@ async def fetch_top_coins() -> list[dict]:
 
 
 async def fetch_coin(coin_id: str) -> list[dict] | None:
+    """
+    Fetches data for a specific coin by its ID from CoinGecko API.
+    If the coin is not found, it tries to search for it by name or symbol.
+
+    Args:
+        coin_id: The ID of the coin to fetch (e.g., 'bitcoin')
+    
+    Returns:
+        A list of dictionaries containing data for the coin, or None if not found or an error
+    
+    Raises:
+        Exception: If any error occurs during the API request or processing
+    """
     try:
         url = f"https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={coin_id}"
         async with httpx.AsyncClient() as client:
