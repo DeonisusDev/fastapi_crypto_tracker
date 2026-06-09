@@ -24,3 +24,5 @@ pluggy==1.6.0
 pygments==2.20.0
 pytest==9.0.3
 pytest-asyncio==1.4.0
+apscheduler==3.11.2 
+tzlocal==5.3.1
