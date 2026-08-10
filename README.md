@@ -4,10 +4,6 @@ A backend service for collecting, storing, and exposing cryptocurrency market da
 
 The service automatically collects top 10 cryptocurrencies by market cap every minute and provides REST API endpoints for accessing current prices and historical data.
 
-## Live Demo
-
-https://fastapicryptotracker-production.up.railway.app
-
 ## Features
 
 - 🔄 **Automated Data Collection**: Scheduled job fetches top coins every minute
